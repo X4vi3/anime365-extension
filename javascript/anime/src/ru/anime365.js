@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.1.1",
+    "version": "0.1.2",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -85,7 +85,14 @@ class DefaultExtension extends MProvider {
     }
 
     async search(query, page, filters) {
-        return await this.seriesPage(`&query=${encodeURIComponent(query)}`, page);
+        // поиск anime365 не находит ничего по типографским апострофам/кавычкам,
+        // а AniList-названия из AnymeX приходят именно с U+2019 (Akebi’s …)
+        const q = String(query)
+            .replace(/[‘’ʼ‛`´]/g, "'")
+            .replace(/[“”«»]/g, '"')
+            .replace(/\s+/g, " ")
+            .trim();
+        return await this.seriesPage(`&query=${encodeURIComponent(q)}`, page);
     }
 
     seriesIdFromLink(url) {
