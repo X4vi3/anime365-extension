@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.1.3",
+    "version": "0.2.0",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -30,7 +30,7 @@ class DefaultExtension extends MProvider {
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.1.3",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.2.0",
         };
     }
 
