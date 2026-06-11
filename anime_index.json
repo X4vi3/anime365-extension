@@ -12,7 +12,7 @@
     "hasCloudflare": false,
     "sourceCodeUrl": "https://raw.githubusercontent.com/X4vi3/anime365-extension/main/javascript/anime/src/ru/anime365.js",
     "apiUrl": "",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "isManga": false,
     "itemType": 1,
     "isFullData": false,

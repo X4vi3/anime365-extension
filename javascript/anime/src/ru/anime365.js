@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.1.0",
+    "version": "0.1.1",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -51,8 +51,10 @@ class DefaultExtension extends MProvider {
 
     pickTitle(titles) {
         if (!titles) return "Без названия";
-        const lang = this.getPreference("anime365_title_lang") || "ru";
-        return titles[lang] || titles.ru || titles.romaji || titles.en || Object.values(titles)[0];
+        // дефолт — ромадзи: AnymeX матчит тайтлы с AniList фаззи-сравнением названий,
+        // кириллица даёт нулевое сходство и «No servers available»
+        const lang = this.getPreference("anime365_title_lang") || "romaji";
+        return titles[lang] || titles.romaji || titles.en || titles.ru || Object.values(titles)[0];
     }
 
     mapSeriesList(items) {
@@ -327,8 +329,8 @@ class DefaultExtension extends MProvider {
                 key: "anime365_title_lang",
                 listPreference: {
                     title: "Язык названий",
-                    summary: "",
-                    valueIndex: 0,
+                    summary: "Внимание: русские названия ломают автоматический подбор тайтла в AnymeX",
+                    valueIndex: 1,
                     entries: ["Русский", "Ромадзи", "English"],
                     entryValues: ["ru", "romaji", "en"],
                 },
