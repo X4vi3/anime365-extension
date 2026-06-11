@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.1.2",
+    "version": "0.1.3",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -30,7 +30,7 @@ class DefaultExtension extends MProvider {
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.1.0",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.1.3",
         };
     }
 
@@ -146,7 +146,11 @@ class DefaultExtension extends MProvider {
         };
     }
 
-    async getToken() {
+    hasManualToken() {
+        return ((this.getPreference("anime365_token") || "").trim()).length > 0;
+    }
+
+    async getToken(forceRefresh) {
         const prefs = new SharedPreferences();
         const manual = (prefs.get("anime365_token") || "").trim();
         if (manual.length > 0) return manual;
@@ -159,7 +163,7 @@ class DefaultExtension extends MProvider {
         }
 
         const credSig = `${app}|${email}|${password}`;
-        if (prefs.getString("anime365_cached_cred", "") === credSig) {
+        if (!forceRefresh && prefs.getString("anime365_cached_cred", "") === credSig) {
             const cached = prefs.getString("anime365_cached_token", "");
             if (cached.length > 0) return cached;
         }
@@ -218,7 +222,6 @@ class DefaultExtension extends MProvider {
 
     async getVideoList(url) {
         const episodeId = JSON.parse(url).episodeId;
-        const token = await this.getToken();
 
         const episode = await this.apiRequest(`/episodes/${episodeId}`);
         const translations = this.filterTranslations(episode.translations);
@@ -226,6 +229,22 @@ class DefaultExtension extends MProvider {
             throw new Error("Anime365: для этой серии нет переводов выбранных типов (проверьте настройки расширения)");
         }
 
+        let result = await this.fetchEmbeds(translations, await this.getToken(false));
+        if (result.videos.length === 0 && result.authError && !this.hasManualToken()) {
+            // кэшированный токен мог протухнуть — перелогиниваемся один раз
+            result = await this.fetchEmbeds(translations, await this.getToken(true));
+        }
+
+        if (result.videos.length === 0) {
+            if (result.authError) {
+                throw new Error(`Anime365: ${result.authError} — проверьте логин и активность подписки в настройках источника`);
+            }
+            throw new Error("Anime365: не удалось получить ни одной ссылки на видео");
+        }
+        return this.sortVideos(result.videos);
+    }
+
+    async fetchEmbeds(translations, token) {
         let authError = null;
         const groups = await Promise.all(translations.map(async (t) => {
             try {
@@ -261,14 +280,7 @@ class DefaultExtension extends MProvider {
             }
         }));
 
-        const videos = groups.flat();
-        if (videos.length === 0) {
-            if (authError) {
-                throw new Error(`Anime365: ${authError} — нужен аккаунт с активной подпиской`);
-            }
-            throw new Error("Anime365: не удалось получить ни одной ссылки на видео");
-        }
-        return this.sortVideos(videos);
+        return { videos: groups.flat(), authError };
     }
 
     sortVideos(videos) {
@@ -370,16 +382,6 @@ class DefaultExtension extends MProvider {
                     valueIndex: 2,
                     entries: ["5", "10", "15", "25", "Все"],
                     entryValues: ["5", "10", "15", "25", "0"],
-                },
-            },
-            {
-                key: "anime365_quality",
-                listPreference: {
-                    title: "Предпочитаемое качество",
-                    summary: "",
-                    valueIndex: 0,
-                    entries: ["1080p", "720p", "480p"],
-                    entryValues: ["1080", "720", "480"],
                 },
             },
         ];
