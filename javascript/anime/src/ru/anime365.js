@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.2.0",
+    "version": "0.2.1",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -30,7 +30,7 @@ class DefaultExtension extends MProvider {
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.2.0",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.2.1",
         };
     }
 
@@ -295,30 +295,10 @@ class DefaultExtension extends MProvider {
     getSourcePreferences() {
         return [
             {
-                key: "anime365_base_url",
-                editTextPreference: {
-                    title: "Зеркало сайта",
-                    summary: "Например: https://smotret-anime.online, https://anime-365.ru, https://smotret-anime.app",
-                    value: "https://smotret-anime.online",
-                    dialogTitle: "Адрес зеркала",
-                    dialogMessage: "Без слэша на конце",
-                },
-            },
-            {
-                key: "anime365_app",
-                editTextPreference: {
-                    title: "Идентификатор API-клиента (app)",
-                    summary: "Создаётся один раз на странице /api-clients вашего зеркала",
-                    value: "",
-                    dialogTitle: "app",
-                    dialogMessage: "Идентификатор, полученный на странице создания API-клиента",
-                },
-            },
-            {
                 key: "anime365_email",
                 editTextPreference: {
                     title: "E-mail аккаунта Anime365",
-                    summary: "",
+                    summary: "Обязательно. Почта от аккаунта с активной подпиской",
                     value: "",
                     dialogTitle: "E-mail",
                     dialogMessage: "",
@@ -328,20 +308,40 @@ class DefaultExtension extends MProvider {
                 key: "anime365_password",
                 editTextPreference: {
                     title: "Пароль аккаунта Anime365",
-                    summary: "Хранится локально, используется только для получения access_token",
+                    summary: "Обязательно. Хранится локально, используется только для получения токена",
                     value: "",
                     dialogTitle: "Пароль",
                     dialogMessage: "",
                 },
             },
             {
+                key: "anime365_app",
+                editTextPreference: {
+                    title: "Идентификатор API-клиента (app)",
+                    summary: "Уже заполнено — менять не нужно. Своё значение создаётся на /api-clients вашего зеркала",
+                    value: "app-d9e50633b507a35745f89574",
+                    dialogTitle: "app",
+                    dialogMessage: "Идентификатор API-клиента (как OAuth client_id, не секретный)",
+                },
+            },
+            {
                 key: "anime365_token",
                 editTextPreference: {
-                    title: "Access token (вручную, опционально)",
-                    summary: "Если указан — логин и пароль не используются",
+                    title: "Access token (необязательно)",
+                    summary: "Оставьте пустым. Нужен только если хотите входить без e-mail и пароля",
                     value: "",
                     dialogTitle: "access_token",
-                    dialogMessage: "Токен можно получить запросом /api/accessToken?app=... в браузере, где вы вошли на сайт",
+                    dialogMessage: "Если указан — логин и пароль не используются. Токен можно получить запросом /api/accessToken?app=... в браузере, где вы вошли на сайт",
+                },
+            },
+            {
+                key: "anime365_base_url",
+                editTextPreference: {
+                    title: "Зеркало сайта",
+                    summary: "Например: https://smotret-anime.online, https://anime-365.ru, https://smotret-anime.app",
+                    value: "https://smotret-anime.online",
+                    dialogTitle: "Адрес зеркала",
+                    dialogMessage: "Без слэша на конце",
                 },
             },
             {
