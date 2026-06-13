@@ -8,9 +8,15 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.2.1",
+    "version": "0.2.2",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
+
+// Зашитый идентификатор API-клиента (как OAuth client_id, не секрет).
+// Дублирует значение по умолчанию настройки anime365_app, чтобы логин работал
+// даже если на Android чтение настроек падает (см. getPref ниже).
+const ANIME365_DEFAULT_APP = "app-d9e50633b507a35745f89574";
+const ANIME365_DEFAULT_BASE = "https://smotret-anime.online";
 
 class DefaultExtension extends MProvider {
     constructor() {
@@ -19,18 +25,30 @@ class DefaultExtension extends MProvider {
         this.pageSize = 20;
     }
 
-    getPreference(key) {
-        return new SharedPreferences().get(key);
+    // Устойчивое чтение настройки. На Android-движке AnymeX (flutter_qjs) мост
+    // не может вычислить значение по умолчанию, если пользователь не сохранял
+    // настройку руками, и бросает "Error when getting source preference".
+    // Поэтому любой сбой/пустое значение → жёсткий fallback, а не падение.
+    getPref(key, fallback) {
+        let v;
+        try {
+            v = new SharedPreferences().get(key);
+        } catch (_) {
+            return fallback;
+        }
+        if (v === null || v === undefined) return fallback;
+        if (typeof v === "string" && v.length === 0) return fallback;
+        if (Array.isArray(v) && v.length === 0) return fallback;
+        return v;
     }
 
     getBaseUrl() {
-        const url = (this.getPreference("anime365_base_url") || "https://smotret-anime.online").trim();
-        return url.replace(/\/+$/, "");
+        return this.getPref("anime365_base_url", ANIME365_DEFAULT_BASE).trim().replace(/\/+$/, "");
     }
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.2.1",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.2.2",
         };
     }
 
@@ -53,7 +71,7 @@ class DefaultExtension extends MProvider {
         if (!titles) return "Без названия";
         // дефолт — ромадзи: AnymeX матчит тайтлы с AniList фаззи-сравнением названий,
         // кириллица даёт нулевое сходство и «No servers available»
-        const lang = this.getPreference("anime365_title_lang") || "romaji";
+        const lang = this.getPref("anime365_title_lang", "romaji");
         return titles[lang] || titles.romaji || titles.en || titles.ru || Object.values(titles)[0];
     }
 
@@ -147,21 +165,22 @@ class DefaultExtension extends MProvider {
     }
 
     hasManualToken() {
-        return ((this.getPreference("anime365_token") || "").trim()).length > 0;
+        return this.getPref("anime365_token", "").trim().length > 0;
     }
 
     async getToken(forceRefresh) {
         const prefs = new SharedPreferences();
-        const manual = (prefs.get("anime365_token") || "").trim();
+        const manual = this.getPref("anime365_token", "").trim();
         if (manual.length > 0) return manual;
 
-        const app = (prefs.get("anime365_app") || "").trim();
-        const email = (prefs.get("anime365_email") || "").trim();
-        const password = prefs.get("anime365_password") || "";
-        if (!app || !email || !password) {
-            throw new Error("Anime365: заполните app, email и пароль в настройках расширения (или вставьте access_token напрямую)");
+        const app = this.getPref("anime365_app", ANIME365_DEFAULT_APP).trim() || ANIME365_DEFAULT_APP;
+        const email = this.getPref("anime365_email", "").trim();
+        const password = this.getPref("anime365_password", "");
+        if (!email || !password) {
+            throw new Error("Anime365: заполните e-mail и пароль в настройках источника (или вставьте access_token напрямую)");
         }
 
+        // кэш токена живёт в строковом хранилище — оно не падает на Android
         const credSig = `${app}|${email}|${password}`;
         if (!forceRefresh && prefs.getString("anime365_cached_cred", "") === credSig) {
             const cached = prefs.getString("anime365_cached_token", "");
@@ -195,9 +214,9 @@ class DefaultExtension extends MProvider {
     }
 
     filterTranslations(translations) {
-        const kinds = this.getPreference("anime365_translation_kinds") || ["voice", "sub"];
-        const langs = this.getPreference("anime365_translation_langs") || ["ru"];
-        const max = parseInt(this.getPreference("anime365_max_translations") || "15");
+        const kinds = this.getPref("anime365_translation_kinds", ["voice", "sub"]);
+        const langs = this.getPref("anime365_translation_langs", ["ru"]);
+        const max = parseInt(this.getPref("anime365_max_translations", "15"));
         let list = (translations || []).filter(t => t.isActive !== 0);
         list = list.filter(t => {
             const kind = this.normalizeKind(t);
@@ -284,7 +303,7 @@ class DefaultExtension extends MProvider {
     }
 
     sortVideos(videos) {
-        const q = this.getPreference("anime365_quality") || "1080";
+        const q = this.getPref("anime365_quality", "1080");
         return videos.sort((a, b) => {
             const am = a.quality.includes(`${q}p`) ? 1 : 0;
             const bm = b.quality.includes(`${q}p`) ? 1 : 0;
@@ -319,7 +338,7 @@ class DefaultExtension extends MProvider {
                 editTextPreference: {
                     title: "Идентификатор API-клиента (app)",
                     summary: "Уже заполнено — менять не нужно. Своё значение создаётся на /api-clients вашего зеркала",
-                    value: "app-d9e50633b507a35745f89574",
+                    value: ANIME365_DEFAULT_APP,
                     dialogTitle: "app",
                     dialogMessage: "Идентификатор API-клиента (как OAuth client_id, не секретный)",
                 },
@@ -339,7 +358,7 @@ class DefaultExtension extends MProvider {
                 editTextPreference: {
                     title: "Зеркало сайта",
                     summary: "Например: https://smotret-anime.online, https://anime-365.ru, https://smotret-anime.app",
-                    value: "https://smotret-anime.online",
+                    value: ANIME365_DEFAULT_BASE,
                     dialogTitle: "Адрес зеркала",
                     dialogMessage: "Без слэша на конце",
                 },
@@ -382,6 +401,16 @@ class DefaultExtension extends MProvider {
                     valueIndex: 2,
                     entries: ["5", "10", "15", "25", "Все"],
                     entryValues: ["5", "10", "15", "25", "0"],
+                },
+            },
+            {
+                key: "anime365_quality",
+                listPreference: {
+                    title: "Предпочитаемое качество",
+                    summary: "",
+                    valueIndex: 0,
+                    entries: ["1080p", "720p", "480p"],
+                    entryValues: ["1080", "720", "480"],
                 },
             },
         ];
