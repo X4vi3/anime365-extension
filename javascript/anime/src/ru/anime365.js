@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.2.2",
+    "version": "0.2.3",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -48,7 +48,7 @@ class DefaultExtension extends MProvider {
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.2.2",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.2.3",
         };
     }
 
@@ -213,18 +213,26 @@ class DefaultExtension extends MProvider {
         return ["ru", "en", "ja"].includes(l) ? l : "other";
     }
 
+    getMinHeight() {
+        return parseInt(this.getPref("anime365_min_height", "0")) || 0;
+    }
+
     filterTranslations(translations) {
         const kinds = this.getPref("anime365_translation_kinds", ["voice", "sub"]);
         const langs = this.getPref("anime365_translation_langs", ["ru"]);
         const max = parseInt(this.getPref("anime365_max_translations", "15"));
+        const minHeight = this.getMinHeight();
         let list = (translations || []).filter(t => t.isActive !== 0);
         list = list.filter(t => {
             const kind = this.normalizeKind(t);
             if (!kinds.includes(kind)) return false;
+            // отбрасываем перевод, чьё максимальное разрешение ниже порога —
+            // заодно экономим запросы embed
+            if (minHeight > 0 && (t.height || 0) < minHeight) return false;
             if (kind === "raw") return true; // оригинал не фильтруем по языку
             return langs.includes(this.normalizeLang(t));
         });
-        // порядок API — по приоритету, поэтому просто обрезаем хвост
+        // порядок API — по priority (рейтинг Anime365), поэтому просто обрезаем хвост
         if (max > 0) list = list.slice(0, max);
         return list;
     }
@@ -264,6 +272,7 @@ class DefaultExtension extends MProvider {
     }
 
     async fetchEmbeds(translations, token) {
+        const minHeight = this.getMinHeight();
         let authError = null;
         const groups = await Promise.all(translations.map(async (t) => {
             try {
@@ -285,12 +294,16 @@ class DefaultExtension extends MProvider {
                 for (const stream of (embed.stream || [])) {
                     const streamUrl = (stream.urls || [])[0];
                     if (!streamUrl) continue;
+                    const height = stream.height || 0;
+                    if (minHeight > 0 && height < minHeight) continue; // прячем низкое разрешение
                     videos.push({
                         url: streamUrl,
                         originalUrl: streamUrl,
-                        quality: `${label} • ${stream.height}p`,
+                        quality: `${label} • ${height}p`,
                         subtitles,
                         headers: this.getHeaders(),
+                        _height: height,            // для сортировки (мост игнорирует лишние поля)
+                        _priority: t.priority || 0, // рейтинг Anime365
                     });
                 }
                 return videos;
@@ -303,11 +316,16 @@ class DefaultExtension extends MProvider {
     }
 
     sortVideos(videos) {
-        const q = this.getPref("anime365_quality", "1080");
+        const mode = this.getPref("anime365_sort", "quality");
         return videos.sort((a, b) => {
-            const am = a.quality.includes(`${q}p`) ? 1 : 0;
-            const bm = b.quality.includes(`${q}p`) ? 1 : 0;
-            return bm - am;
+            const ah = a._height || 0, bh = b._height || 0;
+            const ap = a._priority || 0, bp = b._priority || 0;
+            if (mode === "priority") {
+                // популярность Anime365, при равенстве — выше разрешение
+                return bp !== ap ? bp - ap : bh - ah;
+            }
+            // по качеству: выше разрешение, при равенстве — выше приоритет
+            return bh !== ah ? bh - ah : bp - ap;
         });
     }
 
@@ -404,13 +422,23 @@ class DefaultExtension extends MProvider {
                 },
             },
             {
-                key: "anime365_quality",
+                key: "anime365_min_height",
                 listPreference: {
-                    title: "Предпочитаемое качество",
-                    summary: "",
+                    title: "Минимальное разрешение",
+                    summary: "Скрывать варианты ниже выбранного качества",
                     valueIndex: 0,
-                    entries: ["1080p", "720p", "480p"],
-                    entryValues: ["1080", "720", "480"],
+                    entries: ["Любое", "720p и выше", "1080p и выше", "1440p и выше", "Только 2160p"],
+                    entryValues: ["0", "720", "1080", "1440", "2160"],
+                },
+            },
+            {
+                key: "anime365_sort",
+                listPreference: {
+                    title: "Сортировка вариантов",
+                    summary: "Как упорядочить список озвучек/качеств",
+                    valueIndex: 0,
+                    entries: ["По качеству (выс→низ)", "По популярности (Anime365)"],
+                    entryValues: ["quality", "priority"],
                 },
             },
         ];
