@@ -8,7 +8,7 @@ const mangayomiSources = [{
     "typeSource": "single",
     "itemType": 1,
     "isNsfw": false,
-    "version": "0.2.3",
+    "version": "0.2.4",
     "pkgPath": "anime/src/ru/anime365.js"
 }];
 
@@ -48,7 +48,7 @@ class DefaultExtension extends MProvider {
 
     getHeaders() {
         return {
-            "User-Agent": "Mangayomi-Anime365-Extension/0.2.3",
+            "User-Agent": "Mangayomi-Anime365-Extension/0.2.4",
         };
     }
 
@@ -244,7 +244,9 @@ class DefaultExtension extends MProvider {
         if (!authors) authors = (t.authorsList || []).join(", ").trim();
         const lang = this.normalizeLang(t);
         const langSuffix = this.normalizeKind(t) !== "raw" && lang !== "ru" ? ` [${lang}]` : "";
-        return authors ? `${kind}${langSuffix}: ${authors}` : `${kind}${langSuffix}`;
+        // автор первым словом — так AnymeX узнаёт ту же озвучку на следующей серии
+        // (он матчит дорожки по первому слову подписи)
+        return authors ? `${authors} — ${kind}${langSuffix}` : `${kind}${langSuffix}`;
     }
 
     async getVideoList(url) {
@@ -273,6 +275,7 @@ class DefaultExtension extends MProvider {
 
     async fetchEmbeds(translations, token) {
         const minHeight = this.getMinHeight();
+        const subsOnDubs = this.getPref("anime365_subs_on_dubs", false) === true;
         let authError = null;
         const groups = await Promise.all(translations.map(async (t) => {
             try {
@@ -286,9 +289,14 @@ class DefaultExtension extends MProvider {
                     return [];
                 }
                 const embed = json.data;
+                const kind = this.normalizeKind(t);
                 const subtitles = [];
-                if (embed.subtitlesUrl) subtitles.push({ file: this.absUrl(embed.subtitlesUrl), label: "ASS" });
-                if (embed.subtitlesVttUrl) subtitles.push({ file: this.absUrl(embed.subtitlesVttUrl), label: "WebVTT" });
+                // к озвучке субтитры по умолчанию НЕ прикрепляем, иначе плеер
+                // включает их сам; к субтитрам/оригиналу — всегда (там это и есть перевод)
+                if (kind !== "voice" || subsOnDubs) {
+                    if (embed.subtitlesUrl) subtitles.push({ file: this.absUrl(embed.subtitlesUrl), label: "ASS" });
+                    if (embed.subtitlesVttUrl) subtitles.push({ file: this.absUrl(embed.subtitlesVttUrl), label: "WebVTT" });
+                }
                 const label = this.translationLabel(t);
                 const videos = [];
                 for (const stream of (embed.stream || [])) {
@@ -304,6 +312,7 @@ class DefaultExtension extends MProvider {
                         headers: this.getHeaders(),
                         _height: height,            // для сортировки (мост игнорирует лишние поля)
                         _priority: t.priority || 0, // рейтинг Anime365
+                        _kind: kind,                // voice / sub / raw
                     });
                 }
                 return videos;
@@ -316,16 +325,21 @@ class DefaultExtension extends MProvider {
     }
 
     sortVideos(videos) {
-        const mode = this.getPref("anime365_sort", "quality");
+        // "voice" по умолчанию: озвучка выше субтитров — иначе сабовый перевод
+        // Crunchyroll (у него выше priority) встаёт первым и плеер запускает его
+        const mode = this.getPref("anime365_prefer", "voice");
+        const kindRank = (v) => {
+            if (mode === "voice") return v._kind === "voice" ? 0 : (v._kind === "sub" ? 1 : 2);
+            if (mode === "sub") return v._kind === "sub" ? 0 : (v._kind === "voice" ? 1 : 2);
+            return 0; // quality / priority — без предпочтения по типу перевода
+        };
         return videos.sort((a, b) => {
+            const kr = kindRank(a) - kindRank(b);
+            if (kr !== 0) return kr;
             const ah = a._height || 0, bh = b._height || 0;
             const ap = a._priority || 0, bp = b._priority || 0;
-            if (mode === "priority") {
-                // популярность Anime365, при равенстве — выше разрешение
-                return bp !== ap ? bp - ap : bh - ah;
-            }
-            // по качеству: выше разрешение, при равенстве — выше приоритет
-            return bh !== ah ? bh - ah : bp - ap;
+            if (mode === "priority") return bp !== ap ? bp - ap : bh - ah;
+            return bh !== ah ? bh - ah : bp - ap; // иначе: разрешение, затем приоритет
         });
     }
 
@@ -432,13 +446,21 @@ class DefaultExtension extends MProvider {
                 },
             },
             {
-                key: "anime365_sort",
+                key: "anime365_prefer",
                 listPreference: {
-                    title: "Сортировка вариантов",
-                    summary: "Как упорядочить список озвучек/качеств",
+                    title: "Что показывать первым",
+                    summary: "Какой перевод ставить в начало списка (его плеер и запускает по умолчанию)",
                     valueIndex: 0,
-                    entries: ["По качеству (выс→низ)", "По популярности (Anime365)"],
-                    entryValues: ["quality", "priority"],
+                    entries: ["Озвучку", "Субтитры", "Лучшее качество", "Рейтинг Anime365"],
+                    entryValues: ["voice", "sub", "quality", "priority"],
+                },
+            },
+            {
+                key: "anime365_subs_on_dubs",
+                switchPreferenceCompat: {
+                    title: "Субтитры поверх озвучки",
+                    summary: "Прикреплять субтитры к озвучке (надписи/песни). Выключено — чтобы сабы не включались сами на дубляже",
+                    value: false,
                 },
             },
         ];
